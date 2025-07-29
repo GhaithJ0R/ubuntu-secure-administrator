@@ -1,0 +1,89 @@
+
+## install and configration ufw
+
+sudo apt update
+sudo apt install ufw -y
+sudo ufw status verbose   # chacking if Active ok if not
+sudo ufw enable 
+sudo ufw start
+
+
+## lockdowndown every think by defualt
+
+sudo ufw default deny incoming
+sudo ufw default allow outgoing
+
+## before open any custom port like  SSH or any you most be sure is open on ufw and enable example path ssh 
+sudo nano /etc/ssh/sshd_config # delete '#' on port and custom number
+
+## open port SSH custom like 1356
+
+sudo ufw allow 1356/tcp
+
+## chack status and rules
+
+sudo ufw status verbos
+sudo ufw status numbered
+
+## Delete a Rule (if needed)
+
+## First check the numbered list:
+
+sudo ufw status numbered
+
+## Then delete a rule by its number:
+
+
+sudo ufw delete 1
+
+
+##  Allow Common Services (optional)
+
+sudo ufw allow http
+sudo ufw allow https
+
+## Limit DNS access to local network only:
+
+sudo ufw allow from 192.168.1.0/24 to any port 53 proto udp
+
+
+## Monitor Blocked Traffic
+
+sudo less /var/log/ufw.log
+
+Or use dmesg :
+
+sudo dmesg | grep 'UFW'
+
+
+## Notes
+- Always verify that SSH access is allowed **before enabling `ufw`**.
+- Adjust interface-specific rules using: `sudo ufw allow in on <interface>`
+- For VPN setups, limit access through `wg0` interface only if needed.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
