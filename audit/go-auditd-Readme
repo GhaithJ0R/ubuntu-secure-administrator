@@ -1,0 +1,137 @@
+# go-audit Integration for Ubuntu Server Security Project
+
+This documentation explains how to install, configure, and use `go-audit` as a replacement for the traditional `auditd` service on Ubuntu Server.
+
+# Overview
+
+`go-audit` is a lightweight, high-performance audit daemon written in Go. It connects directly to the Linux kernel's audit subsystem via netlink and processes audit events in real time. The tool outputs structured JSON logs, enabling easy integration with modern SIEM platforms such as ELK Stack, Graylog, or Splunk.
+
+In this project, we use `go-audit` to:
+
+* Monitor sensitive system calls (e.g. `execve`, `connect`, `open`)
+* Track unauthorized access attempts to critical files
+* Collect structured logs for external analysis
+* Replace `auditd` with a faster and more maintainable alternative
+
+
+# Features
+
+* JSON output for better readability and SIEM integration
+* Written in Go — safe and performant
+* Tracks missing audit events via sequence monitoring
+* Supports Docker and cgroup metadata tagging
+* Flexible output options: file, syslog, stdout, GELF
+
+--------------------------------
+
+# Requirements
+
+| Component    | Minimum Version                    |
+| ------------ | ---------------------------------- |
+| OS           | Ubuntu Server 20.04+               |
+| Kernel       | Linux with audit subsystem enabled |
+| Go           | v1.14+ (for building from source)  |
+| auditd tools | auditctl (for rule management)     |
+| Privileges   | root access required               |
+
+--------------------------------
+
+# Installation Steps (Build from Source)
+
+# Step 1: Install dependencies
+
+
+sudo apt update && \
+  sudo apt install -y golang make auditd
+
+
+# Step 2: Clone and build the project
+
+
+git clone https://github.com/slackhq/go-audit.git
+cd go-audit
+make
+
+
+# Step 3: Move the binary
+
+
+sudo cp go-audit /usr/local/bin/
+sudo chown root:root /usr/local/bin/go-audit
+
+
+### Step 4: Prepare configuration
+
+Create a YAML file at `/etc/go-audit.yaml`. Here's a basic example:
+
+```yaml
+socket_buffer:
+  receive: 16384
+
+output:
+  syslog:
+    enabled: true
+
+rules:
+  - -b 1024
+  - -a exit,always -S execve -k exec_log
+  - -a exit,always -S connect -k net_out
+  - -a exit,always -S open,openat -F exit=-EACCES -k denied_access
+  - -e 1
+```
+
+
+
+# Systemd Service Setup
+
+Create the unit file `/etc/systemd/system/go-audit.service`:
+
+ini
+[Unit]
+Description=go-audit daemon for Linux audit
+After=network.target auditd.service
+Conflicts=auditd.service
+
+[Service]
+ExecStart=/usr/local/bin/go-audit -config /etc/go-audit.yaml
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+
+
+Enable and start the service:
+
+
+sudo systemctl daemon-reload
+sudo systemctl disable --now auditd.service
+sudo systemctl enable --now go-audit.service
+
+
+
+# Directory Structure Suggestion
+
+
+auditd/
+└── go-audit/
+    ├── go-audit.yaml
+    ├── go-audit.service
+    ├── README.md  <-- this file
+    └── logrotate.conf
+    
+
+# Next Steps
+
+* [ ] Add integration with rsyslog or filebeat
+* [ ] Create `.deb` package for automated installation
+* [ ] Document advanced rules for critical paths and kernel integrity
+
+
+  Notes
+
+* `go-audit` must not run in parallel with `auditd`. Stop and disable `auditd` before launching `go-audit`.
+* You can monitor the logs via `journalctl -u go-audit` or `/var/log/syslog`.
+* Use `auditctl -l` to verify active rules.
+
+
+For more details, refer to: [https://github.com/slackhq/go-audit](https://github.com/slackhq/go-audit)
