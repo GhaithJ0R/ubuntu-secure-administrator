@@ -2,9 +2,9 @@
 
 This documentation explains how to install, configure, and use `go-audit` as a replacement for the traditional `auditd` service on Ubuntu Server.
 
-##  Overview
+## 📌 Overview
 
-`go-audit` is a lightweight, high-performance audit daemon written in Go. It connects directly to the Linux kernel's audit subsystem via netlink and processes audit events in real time. The tool outputs structured JSON logs, enabling easy integration with modern SIEM platforms such as ELK Stack, Graylog, or Splunk.
+`go-audit` is a lightweight, high-performance audit daemon written in Go. It connects directly to the Linux kernel's audit subsystem via netlink and processes audit events in real time. The tool outputs structured JSON logs, enabling easy integration with modern SIEM platforms such as Graylog.
 
 In this project, we use `go-audit` to:
 
@@ -15,7 +15,7 @@ In this project, we use `go-audit` to:
 
 ---
 
-##  Features
+## ✅ Features
 
 * JSON output for better readability and SIEM integration
 * Written in Go — safe and performant
@@ -25,7 +25,26 @@ In this project, we use `go-audit` to:
 
 ---
 
-## Requirements
+## 👥 Recommended Deployment: SMB/Enterprise with 15–20 Nodes
+
+For companies managing 15 to 20 Linux systems (e.g. developers, backend services, office workstations), we recommend the following:
+
+* **Install `go-audit` on every node** as a local audit log agent
+* **Centralize logs using Graylog**
+* Use a common ruleset (see `go-audit.rules.yaml`) deployed via Ansible
+* Integrate with Graylog streams, dashboards, and alerts
+* Use rsyslog or Filebeat to ship logs to the Graylog server
+
+Advantages:
+
+* Lightweight agent with minimal CPU impact
+* Strong syscall coverage
+* Easy to scale and replicate
+* Central search and alerting with structured JSON logs
+
+---
+
+## 🚧 Requirements
 
 | Component    | Minimum Version                    |
 | ------------ | ---------------------------------- |
@@ -37,7 +56,7 @@ In this project, we use `go-audit` to:
 
 ---
 
-##  Installation Steps (Build from Source)
+## 🛠️ Installation Steps (Build from Source)
 
 ### Step 1: Install dependencies
 
@@ -63,7 +82,7 @@ sudo chown root:root /usr/local/bin/go-audit
 
 ### Step 4: Prepare configuration
 
-Create a YAML file at `/etc/go-audit.yaml`. Here's an enhanced and security-hardened example:
+Create a YAML file at `/etc/go-audit.yaml`. Use a rules file like `go-audit.rules.yaml`:
 
 ```yaml
 socket_buffer:
@@ -73,58 +92,14 @@ output:
   syslog:
     enabled: true
 
-rules:
-  # Increase audit queue depth
-  - -b 8192
-
-  # Monitor execution of all binaries
-  - -a always,exit -F arch=b64 -S execve -k exec_log
-
-  # Monitor access to critical user and auth files
-  - -a always,exit -F arch=b64 -S open,openat -F dir=/etc -F path=passwd -F perm=wa -k etc_passwd
-  - -a always,exit -F arch=b64 -S open,openat -F dir=/etc -F path=shadow -F perm=wa -k etc_shadow
-  - -a always,exit -F arch=b64 -S open,openat -F dir=/etc -F path=sudoers -F perm=wa -k etc_sudoers
-
-  # Monitor failed file access (unauthorized attempts)
-  - -a exit,always -F arch=b64 -S open,openat -F exit=-EACCES -k denied_access
-  - -a exit,always -F arch=b64 -S open,openat -F exit=-EPERM -k denied_access
-
-  # Monitor permission and ownership changes
-  - -a always,exit -F arch=b64 -S chmod,fchmod,fchmodat -k perm_mod
-  - -a always,exit -F arch=b64 -S chown,fchown,fchownat -k owner_mod
-
-  # Monitor process attachment (debugging or injection)
-  - -a always,exit -F arch=b64 -S ptrace -F a0=16 -k ptrace_attach
-
-  # Monitor module loading and unloading
-  - -a always,exit -F arch=b64 -S init_module,delete_module -k kernel_mod
-
-  # Monitor system networking syscalls
-  - -a always,exit -F arch=b64 -S connect -k net_out
-  - -a always,exit -F arch=b64 -S accept,listen,bind -k net_in
-
-  # Monitor cron job modifications
-  - -w /etc/crontab -p wa -k crontab_mod
-  - -w /etc/cron.d/ -p wa -k cron_d_mod
-
-  # Enable auditing if disabled
-  - -e 1
+include_rules_file: /etc/go-audit.rules.yaml
 ```
 
-### Explanation of Rules:
-
-* **`execve` syscall**: Tracks all executed programs on the system.
-* **`open,openat` with path filters**: Tracks read/write access to sensitive files.
-* **Permission Denied logs**: Useful for detecting brute-force or misconfigured scripts.
-* **`chmod, chown` syscalls**: Track changes in file permissions or ownership.
-* **`ptrace` syscall**: Detects attempts to debug or hijack other processes.
-* **`init_module, delete_module`**: Kernel module loading — very sensitive.
-* **`connect, bind, listen`**: Network activity monitoring.
-* **`cron` watches**: Modification of scheduled jobs.
+Then create `/etc/go-audit.rules.yaml` with your syscall rules (see external file).
 
 ---
 
-## ⚙ Systemd Service Setup
+## ⚙️ Systemd Service Setup
 
 Create the unit file `/etc/systemd/system/go-audit.service`:
 
@@ -152,12 +127,13 @@ sudo systemctl enable --now go-audit.service
 
 ---
 
-##  Directory Structure Suggestion
+## 📂 Directory Structure Suggestion
 
 ```
 auditd/
 └── go-audit/
     ├── go-audit.yaml
+    ├── go-audit.rules.yaml  <-- rules moved here
     ├── go-audit.service
     ├── README.md  <-- this file
     └── logrotate.conf
@@ -165,19 +141,94 @@ auditd/
 
 ---
 
-##  Next Steps
+## 🔗 Integration with Graylog
 
-* [ ] Add integration with rsyslog or filebeat
-* [ ] Create `.deb` package for automated installation
-* [ ] Document advanced rules for critical paths and kernel integrity
+To integrate `go-audit` with Graylog, follow these steps:
+
+### Step 1: Install and Configure Graylog
+
+Refer to the official documentation to install Graylog on Ubuntu:
+[https://docs.graylog.org/en/latest/pages/installation.html](https://docs.graylog.org/en/latest/pages/installation.html)
+
+### Step 2: Configure Input in Graylog
+
+* Log in to the Graylog web interface (default http\://<ip>:9000)
+* Go to **System → Inputs**
+* Select **Syslog UDP** or **GELF UDP**
+* Bind to port `514` or `12201`
+* Start the input
+
+### Step 3: Configure rsyslog or Filebeat on Clients
+
+Configure `/etc/rsyslog.d/90-go-audit.conf`:
+
+```bash
+*.* @graylog_ip:514
+```
+
+Restart rsyslog:
+
+```bash
+sudo systemctl restart rsyslog
+```
 
 ---
 
-##  Notes
+## 🚀 Automate Deployment with Ansible
 
-* `go-audit` must not run in parallel with `auditd`. Stop and disable `auditd` before launching `go-audit`.
-* You can monitor the logs via `journalctl -u go-audit` or `/var/log/syslog`.
-* Use `auditctl -l` to verify active rules.
+Use Ansible to automate deployment across multiple servers.
+
+### Step 1: Install Ansible
+
+```bash
+sudo apt install -y ansible
+```
+
+### Step 2: Create Ansible Playbook
+
+* Create an inventory file `inventory.ini` listing all your servers:
+
+```ini
+[audit_nodes]
+192.168.1.10
+192.168.1.11
+```
+
+* Create a playbook `deploy-go-audit.yaml`:
+
+```yaml
+- hosts: audit_nodes
+  become: yes
+  tasks:
+    - name: Install dependencies
+      apt:
+        name: [golang, make, auditd]
+        state: present
+        update_cache: yes
+
+    - name: Copy go-audit files
+      copy:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+      loop:
+        - { src: './go-audit', dest: '/usr/local/bin/go-audit' }
+        - { src: './go-audit.yaml', dest: '/etc/go-audit.yaml' }
+        - { src: './go-audit.rules.yaml', dest: '/etc/go-audit.rules.yaml' }
+        - { src: './go-audit.service', dest: '/etc/systemd/system/go-audit.service' }
+
+    - name: Start and enable service
+      systemd:
+        name: go-audit
+        state: started
+        enabled: yes
+        daemon_reload: yes
+```
+
+Run the playbook:
+
+```bash
+ansible-playbook -i inventory.ini deploy-go-audit.yaml
+```
 
 ---
 
